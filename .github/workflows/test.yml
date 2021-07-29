@@ -43,10 +43,10 @@ jobs:
         os: [ubuntu-20.04, windows-2019, macos-10.15]
         include:
           # Run 32 and 64 bit version in parallel for Linux and Windows
-          - os: windows-20.04
-            path: ~\AppData\Local\pip\Cache
-          - os: ubuntu-2019
+          - os: ubuntu-20.04
             path: ~/.cache/pip
+          - os: windows-2019
+            path: ~\AppData\Local\pip\Cache
           - os: macos-10.15
             path: ~/Library/Caches/pip
 
