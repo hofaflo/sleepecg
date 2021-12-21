@@ -529,7 +529,7 @@ def extract_features(
 
     for record in records:
         if record.sleep_stages is not None and record.sleep_stage_duration is not None:
-            record_duration = (len(record.sleep_stages) - 1) * record.sleep_stage_duration
+            record_duration = len(record.sleep_stages) * record.sleep_stage_duration
         elif record.heartbeat_times is not None:
             record_duration = record.heartbeat_times[-1]
         else:
@@ -580,6 +580,8 @@ def extract_features(
                 np.arange(len(record.sleep_stages)) * record.sleep_stage_duration,
                 record.sleep_stages,
                 kind='nearest',
+                bounds_error=False,
+                fill_value=(record.sleep_stages[0], record.sleep_stages[-1]),
             )(stage_times)
             stages.append(interp_stages)
 
