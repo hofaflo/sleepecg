@@ -27,6 +27,7 @@ _FEATURE_GROUPS = {
         'total_power', 'VLF', 'LF', 'LF_norm', 'HF', 'HF_norm', 'LF_HF_ratio',
     ),
     'metadata': ('recording_start_time', 'age', 'gender', 'weight'),
+    'actigraphy': ('activity',),
 }
 _FEATURE_ID_TO_GROUP = {id: group for group, ids in _FEATURE_GROUPS.items() for id in ids}
 
@@ -395,6 +396,12 @@ def _metadata_features(record: SleepRecord, num_stages: int) -> np.ndarray:
     return X
 
 
+def _actigraphy_features(record: SleepRecord, num_stages: int) -> np.ndarray:
+    start = record.activity_offset
+    end = start + num_stages
+    return record.activity[start:end].reshape((-1, 1))
+
+
 def _parse_feature_selection(
     requested_ids: List[str],
 ) -> Tuple[List[str], List[str], List[int]]:
@@ -592,6 +599,8 @@ def _extract_features_single(
             )
         elif feature_group == 'metadata':
             X.append(_metadata_features(record, num_stages))
+        elif feature_group == 'actigraphy':
+            X.append(_actigraphy_features(record, num_stages))
 
     features = np.hstack(X)[:, col_indices]
 

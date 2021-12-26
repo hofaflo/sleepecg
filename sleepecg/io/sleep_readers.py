@@ -15,7 +15,7 @@ import numpy as np
 
 from ..config import get_config
 from ..heartbeats import detect_heartbeats
-from .nsrr import _download_nsrr_file, _get_nsrr_url, _list_nsrr
+from .nsrr import _download_nsrr_file, _get_nsrr_url, _list_nsrr, download_nsrr
 from .physionet import _list_physionet, download_physionet
 
 
@@ -91,6 +91,8 @@ class SleepRecord:
     id: Optional[str] = None
     recording_start_time: Optional[datetime.time] = None
     heartbeat_times: Optional[np.ndarray] = None
+    activity: Optional[np.ndarray] = None
+    activity_offset: Optional[int] = None
     subject_data: SubjectData = SubjectData()
 
 
@@ -166,6 +168,7 @@ def read_mesa(
     heartbeats_source: str = 'annotation',
     offline: bool = False,
     keep_edfs: bool = False,
+    read_actigraphy: bool = False,
 ) -> Iterator[SleepRecord]:
     """
     Lazily read records from MESA (https://sleepdata.org/datasets/mesa).
@@ -211,6 +214,7 @@ def read_mesa(
     EDF_DIRNAME = 'polysomnography/edfs'
     HEARTBEATS_DIRNAME = 'preprocessed/heartbeats'
     RPOINTS_DIRNAME = 'polysomnography/annotations-rpoints'
+    ACTIGRAPHY_DIRNAME = 'actigraphy'
 
     GENDER_MAPPING = {0: Gender.FEMALE, 1: Gender.MALE}
 
@@ -224,7 +228,9 @@ def read_mesa(
     if data_dir is None:
         data_dir = get_config('data_dir')
 
-    db_dir = Path(data_dir).expanduser() / DB_SLUG
+    data_dir = Path(data_dir).expanduser()
+
+    db_dir = data_dir / DB_SLUG
     annotations_dir = db_dir / ANNOTATION_DIRNAME
     edf_dir = db_dir / EDF_DIRNAME
     heartbeats_dir = db_dir / HEARTBEATS_DIRNAME
@@ -247,6 +253,9 @@ def read_mesa(
             target_filepath=subject_data_filepath,
             checksum=subject_data_checksum,
         )
+
+        if read_actigraphy:
+            download_nsrr('mesa', 'overlap', data_dir=data_dir)
 
         checksums = {}
         xml_files = _list_nsrr(
@@ -273,6 +282,14 @@ def read_mesa(
             shallow=True,
         )
         checksums.update(rpoints_files)
+
+        actigraphy_files = _list_nsrr(
+            DB_SLUG,
+            ACTIGRAPHY_DIRNAME,
+            f'mesa-sleep-{records_pattern}.csv',
+            shallow=True,
+        )
+        checksums.update(actigraphy_files)
     else:
         subject_data_filepath = next((db_dir / 'datasets').glob('mesa-sleep-dataset-*.csv'))
         xml_files = sorted(annotations_dir.glob(f'mesa-sleep-{records_pattern}-nsrr.xml'))
@@ -292,6 +309,17 @@ def read_mesa(
             gender=GENDER_MAPPING[gender],
             age=age,
         )
+
+    if read_actigraphy:
+        overlaps = {}
+        for mesaid, line in np.loadtxt(
+            db_dir / 'overlap/mesa-actigraphy-psg-overlap.csv',
+            delimiter=',',
+            skiprows=1,
+            usecols=[0, 1],  # [mesaid, line]
+            dtype=int,
+        ):
+            overlaps[f'mesa-sleep-{mesaid:04}'] = line - 1
 
     for record_id in requested_records:
         heartbeats_file = heartbeats_dir / f'{record_id}.npy'
@@ -343,6 +371,31 @@ def read_mesa(
             if not edf_was_available and not keep_edfs:
                 edf_filepath.unlink()
 
+        if read_actigraphy:
+            actigraphy_filename = ACTIGRAPHY_DIRNAME + f'/{record_id}.csv'
+            actigraphy_filepath = db_dir / actigraphy_filename
+            if not actigraphy_filepath.is_file():
+                if not offline:
+                    _download_nsrr_file(
+                        download_url + actigraphy_filename,
+                        actigraphy_filepath,
+                        checksums[actigraphy_filename],
+                    )
+                else:
+                    print(f'Skipping {record_id} due to missing actigraphy overlap info')
+
+            activity = np.genfromtxt(
+                actigraphy_filepath,
+                delimiter=',',
+                skip_header=1,
+                missing_values='',
+                usecols=[4],
+                unpack=True,
+            )
+        else:
+            activity = None
+            overlaps = {record_id: None}
+
         xml_filename = ANNOTATION_DIRNAME + f'/{record_id}-nsrr.xml'
         xml_filepath = db_dir / xml_filename
         if not offline:
@@ -360,6 +413,8 @@ def read_mesa(
             id=record_id,
             recording_start_time=parsed_xml.recording_start_time,
             heartbeat_times=heartbeat_times,
+            activity=activity,
+            activity_offset=overlaps[record_id],
             subject_data=subject_data[record_id],
         )
 
