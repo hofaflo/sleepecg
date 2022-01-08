@@ -1,7 +1,7 @@
-```{meta}
-   :google-site-verification:
-      GMIZPvDrRzjwO7BA_h-sHrQYr7sgyOfctjRtbCWPN-g
-```
+---
+html_meta:
+   "google-site-verification": "GMIZPvDrRzjwO7BA_h-sHrQYr7sgyOfctjRtbCWPN-g"
+---
 
 ```{toctree}
    :hidden:
